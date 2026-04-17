@@ -31,6 +31,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          # GITHUB_REPOSITORY is set by Actions (owner/repo); vite.config uses it for base path.
           GITHUB_ACTIONS: "true"
 
       - uses: actions/upload-pages-artifact@v3
