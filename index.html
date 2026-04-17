@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Ridiculous Hook</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div id="hud-depth">Depth: 0m</div>
+        <div id="hud-phase"></div>
+        <div id="hud-caught">Caught: 0</div>
+        <div id="hud-bonus" class="hud-bonus hidden"></div>
+      </div>
+      <div id="overlay" class="hidden">
+        <div id="overlay-title"></div>
+        <div id="overlay-sub"></div>
+        <div id="overlay-hint">Tap to play</div>
+      </div>
+      <div id="floaters"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

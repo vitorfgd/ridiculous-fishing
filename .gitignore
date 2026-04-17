@@ -1,0 +1,21 @@
+node_modules
+dist
+*.local
+
+# Meta Horizon / MHS project files (not part of the Vite web game)
+*.hstf
+*.hstf.assetmeta
+*.hzproject
+*.assetmeta
+haunted_haul_mobile.hzproject
+lighting/
+.meta/
+scripts/
+materialMap.json
+materialMap.json.assetmeta
+p4ignore.txt
+player.hstf
+space.hstf
+tsconfig.custom.json
+eslint.config.js
+.vscode/
