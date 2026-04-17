@@ -61,14 +61,20 @@ export class HookRig {
   }
 
   reset(surfaceY: number): void {
+    const disposeMat = (m: THREE.Material): void => {
+      if (m instanceof THREE.MeshBasicMaterial || m instanceof THREE.MeshStandardMaterial) {
+        m.map = null;
+      }
+      m.dispose();
+    };
     while (this.caughtGroup.children.length > 0) {
       const c = this.caughtGroup.children[0]!;
       c.traverse((ch) => {
         if (ch instanceof THREE.Mesh) {
           ch.geometry.dispose();
           const m = ch.material;
-          if (Array.isArray(m)) m.forEach((x) => x.dispose());
-          else m.dispose();
+          if (Array.isArray(m)) m.forEach(disposeMat);
+          else disposeMat(m);
         }
       });
       this.caughtGroup.remove(c);

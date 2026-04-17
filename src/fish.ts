@@ -38,7 +38,8 @@ export function createProgressiveFishField(scene: THREE.Object3D): FishInstance[
       const typeIndex = spawnIdx % FISH_TYPES.length;
       spawnIdx += 1;
       const ft = FISH_TYPES[typeIndex]!;
-      const mesh = createFishMeshGroup(typeIndex);
+      const faceRight = spawnIdx % 2 === 1;
+      const mesh = createFishMeshGroup(typeIndex, faceRight);
       mesh.castShadow = false;
       mesh.receiveShadow = false;
 
@@ -73,7 +74,7 @@ export function createProgressiveFishField(scene: THREE.Object3D): FishInstance[
         hitHalfW: ft.hitHalfW,
         hitHalfH: ft.hitHalfH,
         phase,
-        hue: ft.body,
+        hue: `#${(ft.tint & 0xffffff).toString(16).padStart(6, "0")}`,
       });
     }
   }
@@ -93,13 +94,20 @@ export function updateSwimmingFishIdle(
   }
 }
 
+function disposeMat(m: THREE.Material): void {
+  if (m instanceof THREE.MeshBasicMaterial || m instanceof THREE.MeshStandardMaterial) {
+    m.map = null;
+  }
+  m.dispose();
+}
+
 function disposeMeshTree(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.geometry.dispose();
       const m = child.material;
-      if (Array.isArray(m)) m.forEach((x) => x.dispose());
-      else m.dispose();
+      if (Array.isArray(m)) m.forEach(disposeMat);
+      else disposeMat(m);
     }
   });
 }

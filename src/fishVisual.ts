@@ -1,74 +1,69 @@
 import * as THREE from "three";
+import fishSpriteUrl from "./assets/fish-sprite.png";
 
-/** 5 readable silhouette variants: hit box matches visual footprint. */
+/** Plane width at `scale: 1` (world units). Original art was 0.72. */
+const FISH_PLANE_BASE = 1.92;
+const HIT_RESCALE = FISH_PLANE_BASE / 0.72;
+
+/** Hit boxes + scale; `tint` multiplies the sprite colors for variety. */
 export const FISH_TYPES = [
-  { id: 0, hitHalfW: 0.48, hitHalfH: 0.22, scale: 1.0, body: "#4ecdc4", fin: "#2fa89f", accent: "#e8fffc" },
-  { id: 1, hitHalfW: 0.52, hitHalfH: 0.26, scale: 1.05, body: "#ff6b9d", fin: "#d94a7a", accent: "#ffe0eb" },
-  { id: 2, hitHalfW: 0.62, hitHalfH: 0.2, scale: 1.1, body: "#ffd166", fin: "#e8a830", accent: "#fff8e6" },
-  { id: 3, hitHalfW: 0.42, hitHalfH: 0.3, scale: 0.92, body: "#7c9cff", fin: "#5a78d4", accent: "#e8eeff" },
-  { id: 4, hitHalfW: 0.58, hitHalfH: 0.3, scale: 1.15, body: "#c792ea", fin: "#9b6bc9", accent: "#f5e8ff" },
+  { id: 0, hitHalfW: 0.48 * HIT_RESCALE, hitHalfH: 0.22 * HIT_RESCALE, scale: 1.0, tint: 0xffffff },
+  { id: 1, hitHalfW: 0.52 * HIT_RESCALE, hitHalfH: 0.26 * HIT_RESCALE, scale: 1.05, tint: 0xffb8d8 },
+  { id: 2, hitHalfW: 0.62 * HIT_RESCALE, hitHalfH: 0.2 * HIT_RESCALE, scale: 1.1, tint: 0xffe8a8 },
+  { id: 3, hitHalfW: 0.42 * HIT_RESCALE, hitHalfH: 0.3 * HIT_RESCALE, scale: 0.92, tint: 0xb8d4ff },
+  { id: 4, hitHalfW: 0.58 * HIT_RESCALE, hitHalfH: 0.3 * HIT_RESCALE, scale: 1.15, tint: 0xe8c8ff },
 ] as const;
 
-function makeSilhouetteShape(typeIndex: number): THREE.Shape {
-  const t = FISH_TYPES[typeIndex % FISH_TYPES.length]!;
-  const w = 0.55 * t.scale;
-  const h = 0.28 * t.scale;
-  const shape = new THREE.Shape();
-  shape.moveTo(-w * 0.85, 0);
-  shape.quadraticCurveTo(-w * 0.2, h * 1.1, w * 0.55, h * 0.35);
-  shape.quadraticCurveTo(w * 0.75, 0, w * 0.55, -h * 0.35);
-  shape.quadraticCurveTo(-w * 0.2, -h * 1.1, -w * 0.85, 0);
-  shape.closePath();
-  return shape;
+/** Width ÷ height for the fish PNG (used by gameplay + bonus toss sprites). */
+export const FISH_SPRITE_ASPECT = 32 / 20;
+
+let sharedFishTexture: THREE.Texture | null = null;
+
+/** Shared by underwater fish meshes and bonus air sprites (same PNG). */
+export function getSharedFishTexture(): THREE.Texture {
+  if (!sharedFishTexture) {
+    const loader = new THREE.TextureLoader();
+    sharedFishTexture = loader.load(fishSpriteUrl);
+    sharedFishTexture.colorSpace = THREE.SRGBColorSpace;
+    sharedFishTexture.magFilter = THREE.NearestFilter;
+    sharedFishTexture.minFilter = THREE.NearestFilter;
+    sharedFishTexture.generateMipmaps = false;
+    sharedFishTexture.premultiplyAlpha = false;
+    sharedFishTexture.format = THREE.RGBAFormat;
+  }
+  return sharedFishTexture;
 }
 
-export function createFishMeshGroup(typeIndex: number): THREE.Group {
+/** Call once on teardown if you need to free GPU memory (optional). */
+export function disposeSharedFishTexture(): void {
+  sharedFishTexture?.dispose();
+  sharedFishTexture = null;
+}
+
+/**
+ * @param faceRight When true, mirrors the sprite so a left-facing texture reads as swimming right.
+ */
+export function createFishMeshGroup(typeIndex: number, faceRight: boolean): THREE.Group {
   const t = FISH_TYPES[typeIndex % FISH_TYPES.length]!;
   const group = new THREE.Group();
-  const shape = makeSilhouetteShape(typeIndex);
-  const extrude = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.12,
-    bevelEnabled: true,
-    bevelThickness: 0.02,
-    bevelSize: 0.02,
-    bevelSegments: 1,
-  });
-  extrude.rotateX(Math.PI / 2);
-  const matBody = new THREE.MeshStandardMaterial({
-    color: t.body,
-    roughness: 0.45,
-    metalness: 0.08,
-    emissive: new THREE.Color(t.body).multiplyScalar(0.06),
-    flatShading: true,
+
+  const map = getSharedFishTexture();
+  const w = FISH_PLANE_BASE * t.scale;
+  const h = w / FISH_SPRITE_ASPECT;
+  const geo = new THREE.PlaneGeometry(w, h);
+  const mat = new THREE.MeshBasicMaterial({
+    map,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
     fog: true,
+    color: new THREE.Color(t.tint),
   });
-  const body = new THREE.Mesh(extrude, matBody);
+  const body = new THREE.Mesh(geo, mat);
+  body.name = "body";
   body.rotation.z = Math.PI;
+  body.scale.x = faceRight ? -1 : 1;
   group.add(body);
-
-  const finShape = new THREE.Shape();
-  finShape.moveTo(0, 0);
-  finShape.lineTo(0.12 * t.scale, 0.08 * t.scale);
-  finShape.lineTo(0.05 * t.scale, 0.14 * t.scale);
-  finShape.closePath();
-  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.04, bevelEnabled: false });
-  finGeo.rotateX(Math.PI / 2);
-  const finMat = new THREE.MeshStandardMaterial({
-    color: t.fin,
-    roughness: 0.5,
-    flatShading: true,
-    fog: true,
-  });
-  const fin = new THREE.Mesh(finGeo, finMat);
-  fin.position.set(-0.08 * t.scale, 0.06 * t.scale, 0.06);
-  fin.name = "fin";
-  group.add(fin);
-
-  const eyeGeo = new THREE.CircleGeometry(0.045 * t.scale, 6);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: t.accent, fog: true });
-  const eye = new THREE.Mesh(eyeGeo, eyeMat);
-  eye.position.set(0.28 * t.scale, 0.04 * t.scale, 0.07);
-  group.add(eye);
 
   return group;
 }
@@ -81,8 +76,4 @@ export function updateFishIdleAnimation(
 ): void {
   const sway = Math.sin(time * 1.1 + phase) * 0.07;
   group.rotation.z = sway;
-  const fin = group.getObjectByName("fin") as THREE.Mesh | undefined;
-  if (fin) {
-    fin.rotation.z = Math.sin(time * 3.2 + phase) * 0.38;
-  }
 }

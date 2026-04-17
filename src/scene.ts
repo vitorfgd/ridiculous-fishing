@@ -114,27 +114,6 @@ function makeSurfaceMaterial(): THREE.ShaderMaterial {
   });
 }
 
-function addLightRays(world: THREE.Group): THREE.Mesh[] {
-  const rays: THREE.Mesh[] = [];
-  const mat = new THREE.MeshBasicMaterial({
-    color: "#c8e8ff",
-    transparent: true,
-    opacity: 0.09,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  for (let i = 0; i < 5; i++) {
-    const geo = new THREE.PlaneGeometry(0.35, 8);
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(-2.2 + i * 1.1, CONFIG.surfaceY - 3.5, -0.3);
-    m.rotation.z = 0.08 + (i - 2) * 0.04;
-    world.add(m);
-    rays.push(m);
-  }
-  return rays;
-}
-
 export function createGameScene(canvas: HTMLCanvasElement): GameScene {
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -177,8 +156,6 @@ export function createGameScene(canvas: HTMLCanvasElement): GameScene {
   surface.position.set(0, CONFIG.surfaceY, 0.25);
   world.add(surface);
 
-  const rays = addLightRays(world);
-
   let cameraHalfHeightScale = 1;
 
   const resize = (): void => {
@@ -213,11 +190,6 @@ export function createGameScene(canvas: HTMLCanvasElement): GameScene {
     skyMat.uniforms.uTime.value = timeSec;
     seaMat.uniforms.uTime.value = timeSec;
     surfMat.uniforms.uTime.value = timeSec;
-    for (let i = 0; i < rays.length; i++) {
-      rays[i]!.position.y = CONFIG.surfaceY - 3.2 + Math.sin(timeSec * 0.35 + i) * 0.15;
-      const m = rays[i]!.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.06 + d * 0.08;
-    }
   };
 
   resize();
@@ -231,10 +203,6 @@ export function createGameScene(canvas: HTMLCanvasElement): GameScene {
     sky.geometry.dispose();
     sea.geometry.dispose();
     surface.geometry.dispose();
-    rays.forEach((m) => {
-      m.geometry.dispose();
-      (m.material as THREE.Material).dispose();
-    });
     renderer.dispose();
   };
 

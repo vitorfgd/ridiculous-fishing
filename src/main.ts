@@ -21,6 +21,7 @@ import {
   type AirBonusFish,
 } from "./bonusToss";
 import { disposeSharedBonusFishTextures } from "./bonusFishSprites";
+import { disposeSharedFishTexture } from "./fishVisual";
 import { createBubbleVfx } from "./vfx";
 import {
   hideOverlay,
@@ -503,7 +504,9 @@ window.addEventListener("beforeunload", () => {
   bubbleVfx.dispose();
   disposeBonusTossFish(airBonusFish, world);
   disposeSharedBonusFishTextures();
+  hook.reset(CONFIG.surfaceY);
+  disposeFishPool(fish, world);
+  disposeSharedFishTexture();
   disposeScene();
   hook.dispose();
-  disposeFishPool(fish, world);
 });

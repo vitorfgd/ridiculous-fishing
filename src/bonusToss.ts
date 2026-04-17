@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { CONFIG } from "./config";
 import {
+  applyBonusFishTapScale,
   applyInitialBonusFishSprite,
   createBonusFishSprite,
   updateBonusFishSpriteRegion,
@@ -8,7 +9,9 @@ import {
 
 export type AirBonusFish = {
   sprite: THREE.Sprite;
-  /** True when last frame was below the water surface (for sprite swap). */
+  /** Matches sprite horizontal flip for tap pop scale. */
+  faceRight: boolean;
+  /** True when last frame was below the water surface (for tint). */
   wasBelow: boolean;
   vx: number;
   vy: number;
@@ -41,7 +44,8 @@ export function spawnBonusTossFish(
   const clampedHook = THREE.MathUtils.clamp(hookX, CONFIG.hookMinX + 0.3, CONFIG.hookMaxX - 0.3);
 
   for (let i = 0; i < airCount; i++) {
-    const sprite = createBonusFishSprite();
+    const faceRight = i % 2 === 1;
+    const sprite = createBonusFishSprite(faceRight);
     const t = i * CONFIG.bonusLaunchStagger + Math.random() * 0.04;
     const spread =
       (i - (airCount - 1) / 2) * 0.42 + (Math.random() - 0.5) * CONFIG.bonusSpawnJitterX;
@@ -57,7 +61,16 @@ export function spawnBonusTossFish(
       ((Math.random() - 0.5) * 2 * CONFIG.bonusLaunchVxSpread) / Math.max(airCount, 1);
     const vy = THREE.MathUtils.randFloat(CONFIG.bonusLaunchVyMin, CONFIG.bonusLaunchVyMax);
     const wasBelow = applyInitialBonusFishSprite(sprite, py, surface);
-    fish.push({ sprite, wasBelow, vx, vy, launchTime: t, launched: false, missed: false });
+    fish.push({
+      sprite,
+      faceRight,
+      wasBelow,
+      vx,
+      vy,
+      launchTime: t,
+      launched: false,
+      missed: false,
+    });
   }
   return { fish, bankedPoints };
 }
@@ -135,7 +148,7 @@ export function tryTapBonusFish(
   if (best < 0) return 0;
   const f = list[best]!;
   f.missed = true;
-  f.sprite.scale.set(1.55, 0.84, 1);
+  applyBonusFishTapScale(f.sprite, f.faceRight);
   f.sprite.visible = false;
   return CONFIG.bonusPerTap;
 }
@@ -143,7 +156,9 @@ export function tryTapBonusFish(
 export function disposeBonusTossFish(list: AirBonusFish[], world: THREE.Object3D): void {
   for (const f of list) {
     world.remove(f.sprite);
-    f.sprite.material.dispose();
+    const m = f.sprite.material as THREE.SpriteMaterial;
+    m.map = null;
+    m.dispose();
   }
   list.length = 0;
 }

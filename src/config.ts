@@ -8,14 +8,15 @@ export type FishTier = {
   minSep: number;
 };
 
+/** Spacing tuned for large sprites; counts give a busy school. */
 export const FISH_TIERS: FishTier[] = [
-  { depthMin: 4, depthMax: 14, count: 3, minSep: 3.4 },
-  { depthMin: 14, depthMax: 30, count: 5, minSep: 2.85 },
-  { depthMin: 30, depthMax: 52, count: 8, minSep: 2.35 },
-  { depthMin: 52, depthMax: 85, count: 12, minSep: 1.95 },
-  { depthMin: 85, depthMax: 130, count: 16, minSep: 1.65 },
-  { depthMin: 130, depthMax: 200, count: 20, minSep: 1.45 },
-  { depthMin: 200, depthMax: 300, count: 22, minSep: 1.35 },
+  { depthMin: 4, depthMax: 14, count: 4, minSep: 5.0 },
+  { depthMin: 14, depthMax: 30, count: 7, minSep: 4.1 },
+  { depthMin: 30, depthMax: 52, count: 11, minSep: 3.35 },
+  { depthMin: 52, depthMax: 85, count: 16, minSep: 2.85 },
+  { depthMin: 85, depthMax: 130, count: 21, minSep: 2.4 },
+  { depthMin: 130, depthMax: 200, count: 26, minSep: 2.1 },
+  { depthMin: 200, depthMax: 300, count: 30, minSep: 1.95 },
 ];
 
 export const CONFIG = {
