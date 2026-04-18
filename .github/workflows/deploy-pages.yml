@@ -1,4 +1,4 @@
-# Builds with Vite base=/ridiculous-fishing/ (GITHUB_ACTIONS=true) and publishes dist/ to GitHub Pages.
+# Vite sets base from GITHUB_REPOSITORY when GITHUB_ACTIONS=true (e.g. /my-repo/) so assets load on project Pages.
 name: Deploy to GitHub Pages
 
 on:

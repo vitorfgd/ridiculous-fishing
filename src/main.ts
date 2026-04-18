@@ -10,8 +10,17 @@ import {
   updateSwimmingFishIdle,
   type FishInstance,
 } from "./fish";
-import { circleHitsAabb, findFirstFishHit } from "./collision";
-import { computeScore } from "./scoring";
+import {
+  circleHitsAabb,
+  findFirstFishHit,
+  pointToAabbDistSq,
+} from "./collision";
+import { formatMoney } from "./fishEconomy";
+import {
+  buildFishHaulBreakdown,
+  depthScoreMult,
+  haulSubtotalFromCounts,
+} from "./scoring";
 import {
   disposeBonusTossFish,
   isBonusTossComplete,
@@ -20,15 +29,19 @@ import {
   updateBonusTossFish,
   type AirBonusFish,
 } from "./bonusToss";
+import { createBonusJuice } from "./bonusJuice";
 import { disposeSharedBonusFishTextures } from "./bonusFishSprites";
 import { disposeSharedFishTexture } from "./fishVisual";
 import { createBubbleVfx } from "./vfx";
 import {
   hideOverlay,
   onOverlayTap,
+  onResultRetry,
+  pulseDepthReadout,
   setHud,
+  showHudToast,
   showReadyOverlay,
-  showResultOverlay,
+  showResultReward,
   spawnFloater,
 } from "./ui";
 
@@ -45,6 +58,7 @@ const {
   updateAtmosphere,
 } = createGameScene(canvas);
 const bubbleVfx = createBubbleVfx(world);
+const bonusJuice = createBonusJuice(world);
 const hook = new HookRig(world);
 let fish: FishInstance[] = createProgressiveFishField(world);
 hook.reset(CONFIG.surfaceY);
@@ -56,16 +70,17 @@ let phase = PlayPhase.Descent;
 let time = 0;
 let maxDepthUnits = 0;
 let fishCaught = 0;
+/** Counts per economy tier id for haul + results. */
+let caughtByTier = new Map<string, number>();
+/** Art variant (0/1/2) for each caught fish, in catch order — used to match bonus toss sprites. */
+let caughtArtVariants: (0 | 1 | 2)[] = [];
 let shake = 0;
 let pointerTargetX = 0;
 let lastRunScore = 0;
 let lastRunMult = 1;
 let lastRunFish = 0;
 let lastRunDepth = 0;
-let lastRunBaseScore = 0;
-let lastRunBonusScore = 0;
 
-let baseFishingScore = 0;
 let bonusAccum = 0;
 let bonusPhaseElapsed = 0;
 let airBonusFish: AirBonusFish[] = [];
@@ -75,6 +90,19 @@ let bonusOrthoZoom = 1;
 /** Upward camera kick when hook breaches surface (decays). */
 let camImpulseY = 0;
 let prevHookY = CONFIG.surfaceY - 0.6;
+
+/** Smoothed depth for HUD readout. */
+let hudDisplayDepth = 0;
+let lastDepthMilestoneBand = 0;
+let nearMissCooldown = 0;
+let surfacePayoffT = 0;
+
+/** Bonus-only tap punch (decays fast; layered on camera). */
+let bonusHitShake = 0;
+/** Consecutive bonus taps this phase (resets each bonus). */
+let bonusTapStreak = 0;
+/** 0–1 blends sky into “reward” palette during bonus. */
+let bonusSkyCheer = 0;
 
 const tmpV = new THREE.Vector3();
 
@@ -110,6 +138,29 @@ function addMicroSplash(x: number, y: number): void {
       vy: 2.5 + Math.random() * 2,
       vx: (Math.random() - 0.5) * 2,
       t: 0.22 + Math.random() * 0.12,
+    });
+  }
+}
+
+function addSurfaceRing(x: number, y: number): void {
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2;
+    const mat = new THREE.MeshBasicMaterial({
+      color: "#f0fbff",
+      transparent: true,
+      opacity: 0.9,
+    });
+    const geo = new THREE.SphereGeometry(0.1 + Math.random() * 0.06, 5, 5);
+    const mesh = new THREE.Mesh(geo, mat);
+    const sp = 2.2 + Math.random() * 0.9;
+    mesh.position.set(x + Math.cos(ang) * 0.15, y, 0.42);
+    world.add(mesh);
+    splashes.push({
+      mesh,
+      vy: Math.sin(ang) * sp * 0.35 + 2.8,
+      vx: Math.cos(ang) * sp,
+      t: 0.5 + Math.random() * 0.15,
     });
   }
 }
@@ -167,8 +218,13 @@ function collectAscentFish(): void {
       f.alive = false;
       f.state = "snap";
       fishCaught += 1;
+      caughtByTier.set(
+        f.economyTierId,
+        (caughtByTier.get(f.economyTierId) ?? 0) + 1,
+      );
+      caughtArtVariants.push(f.artVariant);
       const p = worldToClient(f.x, f.y);
-      spawnFloater(p.x, p.y, "+1");
+      spawnFloater(p.x, p.y, `+$${f.economyValue}`);
     }
   }
 }
@@ -187,7 +243,7 @@ function updateSnapFish(dt: number): void {
       f.mesh.rotation.z = 0;
       hook.caughtGroup.add(f.mesh);
       f.state = "hooked";
-      hook.triggerCatchBounce();
+      hook.triggerCatchBounce(Math.max(0, hook.caughtGroup.children.length - 1));
       addMicroSplash(hook.x, CONFIG.surfaceY - 0.08);
     } else {
       const step = Math.min(1, (32 * dt) / Math.max(d, 0.001));
@@ -208,10 +264,16 @@ function resetRun(): void {
   phase = PlayPhase.Descent;
   maxDepthUnits = 0;
   fishCaught = 0;
+  caughtByTier = new Map();
+  caughtArtVariants = [];
   time = 0;
   pointerTargetX = hook.x;
   camFollowY = CONFIG.surfaceY + CONFIG.cameraIdleBias;
   prevHookY = hook.y;
+  hudDisplayDepth = 0;
+  lastDepthMilestoneBand = 0;
+  nearMissCooldown = 0;
+  surfacePayoffT = 0;
 }
 
 function getBonusActiveFishYBounds(): { minY: number; maxY: number; count: number } | null {
@@ -245,6 +307,9 @@ function desiredCameraCenterY(): number {
   if (appState === AppState.BonusToss) {
     return bonusCameraTrackingTargetY();
   }
+  if (appState === AppState.SurfacePayoff) {
+    return hook.y + CONFIG.cameraAscentBias * 0.85;
+  }
   if (appState !== AppState.Playing) {
     return CONFIG.surfaceY + CONFIG.cameraIdleBias;
   }
@@ -276,20 +341,29 @@ function applyCamera(shakeOffset: number): void {
 }
 
 function beginBonusTossAtSurface(): void {
-  baseFishingScore = computeScore(fishCaught, maxDepthUnits);
   bonusAccum = 0;
   bonusPhaseElapsed = 0;
   disposeBonusTossFish(airBonusFish, world);
+  bonusJuice.clear();
   bonusOrthoZoom = 1;
   setCameraHalfHeightScale(1);
-  const { fish, bankedPoints } = spawnBonusTossFish(world, fishCaught, hook.x);
+  const { fish, bankedPoints } = spawnBonusTossFish(world, fishCaught, hook.x, caughtArtVariants);
   airBonusFish = fish;
   bonusAccum += bankedPoints;
   if (bankedPoints > 0) {
     const p = worldToClient(hook.x, CONFIG.surfaceY);
-    spawnFloater(p.x, p.y, `+${bankedPoints} bank`);
+    const bankedDollars = Math.round(bankedPoints * CONFIG.bonusMoneyPerPoint);
+    spawnFloater(p.x, p.y, `+${formatMoney(bankedDollars)}`);
   }
   shake = 0;
+  bonusHitShake = 0;
+  bonusTapStreak = 0;
+  bonusSkyCheer = 0;
+  camImpulseY += CONFIG.bonusIntroCamImpulse;
+  bonusJuice.spawnLaunchBurst(hook.x, CONFIG.surfaceY);
+  bonusJuice.spawnLaunchBurst(hook.x + 0.15, CONFIG.surfaceY);
+  bonusJuice.spawnLaunchBurst(hook.x - 0.15, CONFIG.surfaceY);
+  showHudToast("BONUS!", 520);
   camFollowY = THREE.MathUtils.lerp(camFollowY, bonusCameraTrackingTargetY(), 0.35);
   appState = AppState.BonusToss;
 }
@@ -297,24 +371,26 @@ function beginBonusTossAtSurface(): void {
 function goResult(): void {
   disposeBonusTossFish(airBonusFish, world);
   airBonusFish = [];
+  bonusJuice.clear();
   bonusOrthoZoom = 1;
   setCameraHalfHeightScale(1);
+  bonusHitShake = 0;
+  bonusTapStreak = 0;
+  bonusSkyCheer = 0;
 
   appState = AppState.Result;
-  lastRunMult = Math.max(1, Math.floor(maxDepthUnits * CONFIG.depthMultiplier));
-  lastRunBaseScore = baseFishingScore;
-  lastRunBonusScore = bonusAccum;
-  lastRunScore = baseFishingScore + bonusAccum;
+  const haul = buildFishHaulBreakdown(caughtByTier, maxDepthUnits);
+  const bonusDollars = Math.round(bonusAccum * CONFIG.bonusMoneyPerPoint);
+  lastRunMult = haul.depthMult;
+  lastRunScore = haul.fishPayout + bonusDollars;
   lastRunFish = fishCaught;
   lastRunDepth = maxDepthUnits;
-  showResultOverlay(
-    lastRunScore,
-    lastRunBaseScore,
-    lastRunBonusScore,
-    lastRunFish,
-    lastRunMult,
-    lastRunDepth,
-  );
+  showResultReward({
+    haul,
+    bonusDollars,
+    totalDollars: lastRunScore,
+    depthM: lastRunDepth,
+  });
 }
 
 function phaseLabel(): string {
@@ -326,7 +402,6 @@ function tick(dt: number): void {
   time += dt;
   camImpulseY *= Math.exp(-dt * 4.8);
   updateSplashes(dt);
-  bubbleVfx.update(dt, time);
 
   if (shake > 0) {
     shake = Math.max(0, shake - CONFIG.shakeDecay * dt);
@@ -336,6 +411,7 @@ function tick(dt: number): void {
     updateCameraFollow(dt);
     applyCamera(shake);
     updateAtmosphere(0, time);
+    bubbleVfx.update(dt, time);
     hook.update(dt, pointerTargetX, time, CONFIG.surfaceY + 1.4, false);
     const depthHud =
       appState === AppState.Ready
@@ -344,12 +420,51 @@ function tick(dt: number): void {
     const phaseHud =
       appState === AppState.Ready ? "Tap to drop" : "Nice run!";
     const caughtHud = appState === AppState.Result ? lastRunFish : fishCaught;
-    setHud(depthHud, phaseHud, caughtHud);
+    const multHud =
+      appState === AppState.Result ? lastRunMult : undefined;
+    setHud(depthHud, phaseHud, caughtHud, undefined, multHud, undefined);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (appState === AppState.SurfacePayoff) {
+    surfacePayoffT -= dt;
+    hook.update(dt, pointerTargetX, time, CONFIG.surfaceY + 1.4, false);
+    updateCameraFollow(dt);
+    applyCamera(shake);
+    updateAtmosphere(maxDepthUnits, time);
+    bubbleVfx.update(dt, time, {
+      x: hook.x,
+      y: CONFIG.surfaceY,
+      pull: 0.22,
+    });
+    hudDisplayDepth = THREE.MathUtils.lerp(
+      hudDisplayDepth,
+      maxDepthUnits,
+      1 - Math.exp(-CONFIG.hudDepthLerp * dt),
+    );
+    const mult = depthScoreMult(maxDepthUnits);
+    const haulLine =
+      fishCaught > 0
+        ? `×${fishCaught} · ${formatMoney(haulSubtotalFromCounts(caughtByTier))}`
+        : undefined;
+    setHud(hudDisplayDepth, "You made it!", fishCaught, undefined, mult, haulLine);
+    if (surfacePayoffT <= 0) {
+      beginBonusTossAtSurface();
+    }
     renderer.render(scene, camera);
     return;
   }
 
   if (appState === AppState.BonusToss) {
+    if (shake > 0) {
+      shake = Math.max(0, shake - CONFIG.shakeDecay * dt);
+    }
+    bonusHitShake *= Math.exp(-dt * CONFIG.bonusHitShakeDecay);
+    bonusSkyCheer = Math.min(
+      1,
+      bonusSkyCheer + dt / Math.max(0.08, CONFIG.bonusSkyCheerRampSec),
+    );
     bonusPhaseElapsed += dt;
     const sloMoDt = dt * CONFIG.bonusTimeScale;
     const b = getBonusActiveFishYBounds();
@@ -368,15 +483,37 @@ function tick(dt: number): void {
     const viewHalfH = CONFIG.cameraHalfHeight * bonusOrthoZoom;
 
     updateCameraFollow(dt);
-    applyCamera(0);
+    const bonusShake = Math.min(
+      CONFIG.bonusShakeCapBonus,
+      shake + bonusHitShake,
+    );
+    applyCamera(bonusShake);
     updateBonusTossFish(airBonusFish, sloMoDt, bonusPhaseElapsed, camFollowY, viewHalfH);
+    for (const f of airBonusFish) {
+      if (f.justLaunched) {
+        f.justLaunched = false;
+        bonusJuice.spawnLaunchBurst(f.sprite.position.x, CONFIG.surfaceY);
+      }
+    }
     hook.update(sloMoDt, pointerTargetX, time, CONFIG.surfaceY + 1.4, false);
     if (isBonusTossComplete(airBonusFish, bonusPhaseElapsed)) {
       goResult();
       return;
     }
-    updateAtmosphere(maxDepthUnits, time);
-    setHud(maxDepthUnits, "TAP THE FISH!", fishCaught, bonusAccum);
+    updateAtmosphere(maxDepthUnits, time, bonusSkyCheer);
+    const bm = depthScoreMult(maxDepthUnits);
+    const phaseBonusHud =
+      bonusPhaseElapsed < 0.48 ? "BONUS! · TAP!" : "TAP THE FISH!";
+    setHud(
+      maxDepthUnits,
+      phaseBonusHud,
+      fishCaught,
+      Math.round(bonusAccum * CONFIG.bonusMoneyPerPoint),
+      bm,
+      undefined,
+    );
+    bonusJuice.update(dt);
+    bubbleVfx.update(dt, time, { x: hook.x, y: hook.y, pull: 0.12 });
     renderer.render(scene, camera);
     return;
   }
@@ -420,24 +557,82 @@ function tick(dt: number): void {
     if (hook.y >= CONFIG.surfaceY - 0.15) {
       hook.y = CONFIG.surfaceY - 0.15;
       addSplash(hook.x, CONFIG.surfaceY);
+      addSurfaceRing(hook.x, CONFIG.surfaceY);
       shake = Math.max(shake, CONFIG.shakeSurface);
       if (fishCaught <= 0) {
-        baseFishingScore = computeScore(fishCaught, maxDepthUnits);
         bonusAccum = 0;
         goResult();
       } else {
-        beginBonusTossAtSurface();
+        surfacePayoffT = CONFIG.surfacePayoffSec;
+        appState = AppState.SurfacePayoff;
+        camImpulseY += 0.58;
+        showHudToast("Surface!", 650);
       }
     }
+  }
+
+  if (appState !== AppState.Playing) {
+    renderer.render(scene, camera);
+    return;
   }
 
   hook.update(dt, pointerTargetX, time, CONFIG.surfaceY + 1.4, descending);
   updateCameraFollow(dt);
   applyCamera(shake);
-  updateAtmosphere(Math.max(0, CONFIG.surfaceY - hook.y), time);
+  const rawDepthHud = Math.max(0, CONFIG.surfaceY - hook.y);
+  updateAtmosphere(rawDepthHud, time);
   prevHookY = hook.y;
-  const depthHud = Math.max(0, CONFIG.surfaceY - hook.y);
-  setHud(depthHud, phaseLabel(), fishCaught);
+
+  nearMissCooldown = Math.max(0, nearMissCooldown - dt);
+  if (descending && nearMissCooldown <= 0) {
+    const r = CONFIG.hookRadius;
+    const r2 = r * r;
+    const outer = r + CONFIG.nearMissExtra;
+    const o2 = outer * outer;
+    for (const f of fish) {
+      if (!f.alive || f.state !== "swim") continue;
+      const d2 = pointToAabbDistSq(
+        hook.x,
+        hook.y,
+        f.x,
+        f.y,
+        f.hitHalfW,
+        f.hitHalfH,
+      );
+      if (d2 > r2 && d2 < o2) {
+        nearMissCooldown = CONFIG.nearMissCooldownSec;
+        const p = worldToClient(hook.x, hook.y);
+        spawnFloater(p.x, p.y + 18, "close", "floater--ding");
+        camImpulseY += 0.06;
+        break;
+      }
+    }
+  }
+
+  hudDisplayDepth = THREE.MathUtils.lerp(
+    hudDisplayDepth,
+    rawDepthHud,
+    1 - Math.exp(-CONFIG.hudDepthLerp * dt),
+  );
+  const depthBand = Math.floor(rawDepthHud / 10);
+  if (depthBand > lastDepthMilestoneBand && depthBand >= 1) {
+    lastDepthMilestoneBand = depthBand;
+    pulseDepthReadout();
+    const dm = depthScoreMult(rawDepthHud);
+    showHudToast(dm >= 2 ? `${depthBand * 10} m · ×${dm}` : `${depthBand * 10} m`, 820);
+  }
+
+  const multHud = depthScoreMult(maxDepthUnits);
+  const ascentHaul =
+    !descending && fishCaught > 0
+      ? `×${fishCaught} · ${formatMoney(haulSubtotalFromCounts(caughtByTier))}`
+      : undefined;
+  setHud(hudDisplayDepth, phaseLabel(), fishCaught, undefined, multHud, ascentHaul);
+  bubbleVfx.update(dt, time, {
+    x: hook.x,
+    y: hook.y,
+    pull: descending ? 1 : 0.28,
+  });
   renderer.render(scene, camera);
 }
 
@@ -450,17 +645,39 @@ function frame(now: number): void {
 }
 
 canvas.addEventListener("pointerdown", (e) => {
+  if (appState === AppState.SurfacePayoff) {
+    e.preventDefault();
+    return;
+  }
   if (appState === AppState.BonusToss) {
-    const pts = tryTapBonusFish(
+    const tap = tryTapBonusFish(
       airBonusFish,
       e.clientX,
       e.clientY,
       worldToClient,
       bonusPhaseElapsed,
     );
-    if (pts > 0) {
-      bonusAccum += pts;
-      spawnFloater(e.clientX, e.clientY, `+${pts}`);
+    if (tap.pts > 0) {
+      bonusAccum += tap.pts;
+      bonusTapStreak += 1;
+      const stack = Math.min(10, bonusTapStreak);
+      bonusHitShake = Math.min(
+        CONFIG.bonusShakeCapBonus,
+        bonusHitShake +
+          CONFIG.bonusTapShakeBase +
+          stack * CONFIG.bonusTapShakeStack,
+      );
+      if (tap.worldX !== undefined && tap.worldY !== undefined) {
+        bonusJuice.spawnTapBurst(tap.worldX, tap.worldY, bonusTapStreak);
+        const fp = worldToClient(tap.worldX, tap.worldY);
+        const floaterClass =
+          bonusTapStreak >= 3 ? "floater--bonusHot" : "floater--bonus";
+        const tapD = Math.round(tap.pts * CONFIG.bonusMoneyPerPoint);
+        spawnFloater(fp.x, fp.y, `+${formatMoney(tapD)}`, floaterClass);
+      } else {
+        const tapD = Math.round(tap.pts * CONFIG.bonusMoneyPerPoint);
+        spawnFloater(e.clientX, e.clientY, `+${formatMoney(tapD)}`, "floater--bonus");
+      }
     }
     e.preventDefault();
     return;
@@ -470,7 +687,7 @@ canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (appState === AppState.BonusToss) {
+  if (appState === AppState.BonusToss || appState === AppState.SurfacePayoff) {
     e.preventDefault();
     return;
   }
@@ -487,14 +704,15 @@ onOverlayTap(() => {
     appState = AppState.Playing;
     phase = PlayPhase.Descent;
     resetRun();
-    return;
   }
-  if (appState === AppState.Result) {
-    hideOverlay();
-    appState = AppState.Playing;
-    phase = PlayPhase.Descent;
-    resetRun();
-  }
+});
+
+onResultRetry(() => {
+  if (appState !== AppState.Result) return;
+  hideOverlay();
+  appState = AppState.Playing;
+  phase = PlayPhase.Descent;
+  resetRun();
 });
 
 requestAnimationFrame(frame);
@@ -502,6 +720,7 @@ requestAnimationFrame(frame);
 window.addEventListener("beforeunload", () => {
   setCameraHalfHeightScale(1);
   bubbleVfx.dispose();
+  bonusJuice.clear();
   disposeBonusTossFish(airBonusFish, world);
   disposeSharedBonusFishTextures();
   hook.reset(CONFIG.surfaceY);

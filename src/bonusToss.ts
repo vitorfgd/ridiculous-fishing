@@ -17,6 +17,8 @@ export type AirBonusFish = {
   vy: number;
   launchTime: number;
   launched: boolean;
+  /** One-frame flag for launch VFX in main loop. */
+  justLaunched: boolean;
   missed: boolean;
 };
 
@@ -28,11 +30,13 @@ export type SpawnBonusResult = {
 
 /**
  * Spawns up to `bonusMaxAirTargets` toss targets; banks flat bonus for overflow count.
+ * @param caughtVariants Art variant per caught fish — used to show the same species in the toss.
  */
 export function spawnBonusTossFish(
   world: THREE.Object3D,
   fishCaught: number,
   hookX: number,
+  caughtVariants: (0 | 1 | 2)[] = [],
 ): SpawnBonusResult {
   const cap = CONFIG.bonusMaxAirTargets;
   const airCount = Math.min(fishCaught, cap);
@@ -45,7 +49,12 @@ export function spawnBonusTossFish(
 
   for (let i = 0; i < airCount; i++) {
     const faceRight = i % 2 === 1;
-    const sprite = createBonusFishSprite(faceRight);
+    /* Pick art variant from caught list, cycling if there are fewer entries than air count. */
+    const artVariant: 0 | 1 | 2 =
+      caughtVariants.length > 0
+        ? (caughtVariants[i % caughtVariants.length] ?? 0)
+        : 0;
+    const sprite = createBonusFishSprite(faceRight, artVariant);
     const t = i * CONFIG.bonusLaunchStagger + Math.random() * 0.04;
     const spread =
       (i - (airCount - 1) / 2) * 0.42 + (Math.random() - 0.5) * CONFIG.bonusSpawnJitterX;
@@ -58,8 +67,14 @@ export function spawnBonusTossFish(
     sprite.position.set(px, py, 0.55);
     world.add(sprite);
     const vx =
-      ((Math.random() - 0.5) * 2 * CONFIG.bonusLaunchVxSpread) / Math.max(airCount, 1);
-    const vy = THREE.MathUtils.randFloat(CONFIG.bonusLaunchVyMin, CONFIG.bonusLaunchVyMax);
+      ((Math.random() - 0.5) *
+        2 *
+        (CONFIG.bonusLaunchVxSpread + CONFIG.bonusLaunchVxExtraSpread)) /
+      Math.max(airCount, 1);
+    const vy = THREE.MathUtils.randFloat(
+      CONFIG.bonusLaunchVyMin,
+      CONFIG.bonusLaunchVyMax + CONFIG.bonusLaunchVyJitter * Math.random(),
+    );
     const wasBelow = applyInitialBonusFishSprite(sprite, py, surface);
     fish.push({
       sprite,
@@ -69,6 +84,7 @@ export function spawnBonusTossFish(
       vy,
       launchTime: t,
       launched: false,
+      justLaunched: false,
       missed: false,
     });
   }
@@ -89,6 +105,7 @@ export function updateBonusTossFish(
     if (!f.launched) {
       if (phaseElapsed >= f.launchTime) {
         f.launched = true;
+        f.justLaunched = true;
       } else {
         f.wasBelow = updateBonusFishSpriteRegion(
           f.sprite,
@@ -117,14 +134,20 @@ export function updateBonusTossFish(
 
 export type ProjectFn = (wx: number, wy: number) => { x: number; y: number };
 
-/** Returns bonus points awarded (0 or bonusPerTap). */
+export type BonusTapOutcome = {
+  pts: number;
+  worldX?: number;
+  worldY?: number;
+};
+
+/** Returns bonus points (0 if miss) and world hit position for VFX. */
 export function tryTapBonusFish(
   list: AirBonusFish[],
   clientX: number,
   clientY: number,
   project: ProjectFn,
   phaseElapsed: number,
-): number {
+): BonusTapOutcome {
   const r = CONFIG.bonusTapRadiusPx;
   const r2 = r * r;
   let best = -1;
@@ -134,7 +157,10 @@ export function tryTapBonusFish(
     const f = list[i]!;
     if (f.missed) continue;
     if (phaseElapsed < f.launchTime) continue;
-    if (!f.launched) f.launched = true;
+    if (!f.launched) {
+      f.launched = true;
+      f.justLaunched = true;
+    }
     const p = project(f.sprite.position.x, f.sprite.position.y);
     const dx = p.x - clientX;
     const dy = p.y - clientY;
@@ -145,12 +171,14 @@ export function tryTapBonusFish(
     }
   }
 
-  if (best < 0) return 0;
+  if (best < 0) return { pts: 0 };
   const f = list[best]!;
+  const worldX = f.sprite.position.x;
+  const worldY = f.sprite.position.y;
   f.missed = true;
   applyBonusFishTapScale(f.sprite, f.faceRight);
   f.sprite.visible = false;
-  return CONFIG.bonusPerTap;
+  return { pts: CONFIG.bonusPerTap, worldX, worldY };
 }
 
 export function disposeBonusTossFish(list: AirBonusFish[], world: THREE.Object3D): void {

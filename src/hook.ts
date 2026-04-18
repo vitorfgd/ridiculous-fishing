@@ -16,6 +16,8 @@ export class HookRig {
   private readonly trailLine: THREE.Line;
   private trailPositions: Float32Array;
   private trailCount = 0;
+  /** Horizontal target follow without sway (sway applied after). */
+  private steerX = 0;
 
   constructor(parent: THREE.Object3D) {
     this.group = new THREE.Group();
@@ -83,6 +85,7 @@ export class HookRig {
     this.caughtGroup.scale.setScalar(1);
     this.caughtGroup.rotation.z = 0;
     this.hookMesh.position.set(0, surfaceY - 0.6, 0);
+    this.steerX = this.hookMesh.position.x;
     this.trailCount = 0;
     this.trailPositions.fill(0);
     this.trailGeom.setDrawRange(0, 0);
@@ -142,24 +145,41 @@ export class HookRig {
     surfaceRodBaseY: number,
     isDescending: boolean,
   ): void {
-    const hx = THREE.MathUtils.lerp(
-      this.hookMesh.position.x,
+    this.steerX = THREE.MathUtils.lerp(
+      this.steerX,
       targetX,
       1 - Math.exp(-CONFIG.hookHorizontalLerp * dt),
     );
-    const clamped = THREE.MathUtils.clamp(hx, CONFIG.hookMinX, CONFIG.hookMaxX);
-    this.hookMesh.position.x = clamped;
+    this.steerX = THREE.MathUtils.clamp(
+      this.steerX,
+      CONFIG.hookMinX,
+      CONFIG.hookMaxX,
+    );
 
+    const bobMul = isDescending ? CONFIG.hookDescentRollMul : 1;
     const bob = isDescending
-      ? Math.sin(time * CONFIG.bobFrequency) * CONFIG.bobAmplitude
+      ? Math.sin(time * CONFIG.bobFrequency) * CONFIG.bobAmplitude * bobMul
       : Math.sin(time * (CONFIG.bobFrequency * 0.6)) * (CONFIG.bobAmplitude * 0.4);
+    const sway = isDescending
+      ? Math.sin(time * 2.35 + 0.4) * CONFIG.hookDescentSway +
+        Math.sin(time * 3.8) * (CONFIG.hookDescentSway * 0.45)
+      : Math.sin(time * 1.9) * (CONFIG.hookDescentSway * 0.35);
+    this.hookMesh.position.x = THREE.MathUtils.clamp(
+      this.steerX + sway,
+      CONFIG.hookMinX,
+      CONFIG.hookMaxX,
+    );
     const rodY = surfaceRodBaseY + bob;
-    const rodX = clamped * 0.15;
+    const rodX = this.steerX * 0.15;
     this.updateLine(rodX, rodY);
+
+    this.trailMat.opacity = isDescending
+      ? CONFIG.trailOpacityDescent
+      : CONFIG.trailOpacityAscent;
 
     if (this.catchBounce > 0) {
       this.catchBounce = Math.max(0, this.catchBounce - dt * 3.2);
-      const punch = this.catchBounce * 0.14;
+      const punch = Math.min(0.26, this.catchBounce * 0.12);
       this.caughtGroup.scale.setScalar(1 + punch);
     } else {
       this.caughtGroup.scale.setScalar(1);
@@ -171,8 +191,8 @@ export class HookRig {
     this.pushTrail(this.hookMesh.position.x, this.hookMesh.position.y);
   }
 
-  triggerCatchBounce(): void {
-    this.catchBounce = 1;
+  triggerCatchBounce(stackBonus = 0): void {
+    this.catchBounce = Math.min(1.45, 1 + stackBonus * CONFIG.catchBouncePerFish);
   }
 
   dispose(): void {

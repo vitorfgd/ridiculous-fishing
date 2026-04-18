@@ -11,17 +11,60 @@
   <body>
     <div id="app">
       <canvas id="game"></canvas>
+
+      <!-- ── IN-GAME HUD ───────────────────────────────────────── -->
       <div id="hud">
-        <div id="hud-depth">Depth: 0m</div>
-        <div id="hud-phase"></div>
-        <div id="hud-caught">Caught: 0</div>
+        <div id="hud-depth-row">
+          <!-- left: fish count + haul during ascent -->
+          <div id="hud-left">
+            <div id="hud-caught">×0</div>
+            <div id="hud-haul" class="hud-haul hidden" aria-hidden="true"></div>
+          </div>
+          <!-- right: multiplier badge + depth -->
+          <div id="hud-right">
+            <div id="hud-mult" class="hud-mult hidden"></div>
+            <div id="hud-depth">0m</div>
+          </div>
+        </div>
         <div id="hud-bonus" class="hud-bonus hidden"></div>
+        <div id="hud-toast" class="hud-toast hidden" aria-live="polite"></div>
+        <div id="hud-phase"></div>
       </div>
+
+      <!-- ── OVERLAYS ──────────────────────────────────────────── -->
       <div id="overlay" class="hidden">
-        <div id="overlay-title"></div>
-        <div id="overlay-sub"></div>
-        <div id="overlay-hint">Tap to play</div>
+
+        <!-- READY screen -->
+        <div id="overlay-ready" class="overlay-panel overlay-panel--ready">
+          <div id="overlay-title">RIDICULOUS<br>HOOK</div>
+          <div id="overlay-sub">DROP · DODGE · CATCH</div>
+          <div id="overlay-hint">▶ TAP TO DROP ◀</div>
+        </div>
+
+        <!-- RESULT screen -->
+        <div
+          id="overlay-result"
+          class="overlay-panel overlay-panel--result hidden"
+          aria-live="polite"
+        >
+          <div class="result-scrim" aria-hidden="true"></div>
+          <div class="result-card">
+            <div class="result-header">// HAUL REPORT //</div>
+            <h2 id="result-heading" class="result-heading">CAUGHT!</h2>
+            <div id="result-rows" class="result-rows"></div>
+            <p id="result-empty" class="result-empty hidden">NOTHING HOOKED</p>
+            <div class="result-divider"></div>
+            <div id="result-meta" class="result-meta"></div>
+            <div id="result-bonus-line" class="result-bonus-line hidden"></div>
+            <div id="result-total" class="result-total">$0</div>
+            <button type="button" id="result-retry" class="result-retry">
+              ▶ PLAY AGAIN
+            </button>
+          </div>
+        </div>
+
       </div>
+
       <div id="floaters"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

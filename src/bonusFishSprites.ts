@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getSharedFishTexture, FISH_SPRITE_ASPECT } from "./fishVisual";
+import { getFishTexture, FISH_ART_ASPECTS_PUBLIC } from "./fishVisual";
 
 const COL_BELOW = new THREE.Color("#c8ecff");
 const COL_ABOVE = new THREE.Color("#ffffff");
@@ -7,13 +7,25 @@ const COL_ABOVE = new THREE.Color("#ffffff");
 const BONUS_FISH_H = 0.92;
 const BONUS_FISH_TAP_H = 1.18;
 
-function setSpriteScale(sprite: THREE.Sprite, height: number, faceRight: boolean): void {
-  const w = height * FISH_SPRITE_ASPECT;
+function aspectForVariant(variant: 0 | 1 | 2): number {
+  return FISH_ART_ASPECTS_PUBLIC[variant];
+}
+
+function setSpriteScale(
+  sprite: THREE.Sprite,
+  height: number,
+  faceRight: boolean,
+  variant: 0 | 1 | 2,
+): void {
+  const aspect = aspectForVariant(variant);
+  const w = height * aspect;
+  /* New sprites (1,2) face left in the PNG — mirror to face right when needed.
+     Classic (0) uses negative-X to mirror (same logic, different origin). */
   sprite.scale.set(faceRight ? -w : w, height, 1);
 }
 
-export function createBonusFishSprite(faceRight: boolean): THREE.Sprite {
-  const map = getSharedFishTexture();
+export function createBonusFishSprite(faceRight: boolean, artVariant: 0 | 1 | 2 = 0): THREE.Sprite {
+  const map = getFishTexture(artVariant);
   const mat = new THREE.SpriteMaterial({
     map,
     transparent: true,
@@ -23,7 +35,8 @@ export function createBonusFishSprite(faceRight: boolean): THREE.Sprite {
     color: COL_ABOVE.clone(),
   });
   const sprite = new THREE.Sprite(mat);
-  setSpriteScale(sprite, BONUS_FISH_H, faceRight);
+  sprite.userData.artVariant = artVariant;
+  setSpriteScale(sprite, BONUS_FISH_H, faceRight, artVariant);
   return sprite;
 }
 
@@ -53,9 +66,13 @@ export function updateBonusFishSpriteRegion(
 }
 
 /** Pop feedback when tapped (keeps horizontal mirror). */
-export function applyBonusFishTapScale(sprite: THREE.Sprite, faceRight: boolean): void {
-  setSpriteScale(sprite, BONUS_FISH_TAP_H, faceRight);
+export function applyBonusFishTapScale(
+  sprite: THREE.Sprite,
+  faceRight: boolean,
+): void {
+  const variant = (sprite.userData.artVariant ?? 0) as 0 | 1 | 2;
+  setSpriteScale(sprite, BONUS_FISH_TAP_H, faceRight, variant);
 }
 
-/** Texture is owned by `fishVisual`; nothing to free here. */
+/** Textures are owned by `fishVisual`; nothing to free here. */
 export function disposeSharedBonusFishTextures(): void {}

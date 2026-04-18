@@ -1,17 +1,36 @@
-* {
-  box-sizing: border-box;
+/* ═══════════════════════════════════════════════════════════════
+   RIDICULOUS HOOK — ARCADE UI
+   Font stack: bold system sans (Impact first on desktop,
+   Arial Black on mobile, system-ui fallback everywhere).
+═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --c-bg:       #020c18;
+  --c-panel:    #04111f;
+  --c-cyan:     #00d8ff;
+  --c-yellow:   #ffe000;
+  --c-green:    #00e87a;
+  --c-orange:   #ff8800;
+  --c-white:    #eef8ff;
+  --c-dim:      rgba(200, 230, 255, 0.55);
+
+  /* Arcade outline: 4-direction shadow → solid black outline */
+  --outline: -1px -1px 0 #000, 1px -1px 0 #000,
+             -1px  1px 0 #000, 1px  1px 0 #000;
+  --outline-lg: -2px -2px 0 #000, 2px -2px 0 #000,
+                -2px  2px 0 #000, 2px  2px 0 #000;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
   overflow: hidden;
   touch-action: none;
-  background: #0a1628;
-  font-family: system-ui, sans-serif;
+  background: var(--c-bg);
+  font-family: 'Arial Black', Impact, 'Haettenschweiler', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -23,91 +42,418 @@ body {
 
 #game {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   touch-action: none;
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+   HUD
+══════════════════════════════════════════════════════════════ */
+
 #hud {
   position: absolute;
-  top: env(safe-area-inset-top, 8px);
-  left: 0;
-  right: 0;
-  padding: 12px 16px;
-  color: #e8f4ff;
-  text-shadow: 0 1px 3px #000a;
-  font-size: 15px;
-  font-weight: 600;
+  top: env(safe-area-inset-top, 0px);
+  left: 0; right: 0;
+  padding: 10px 14px 0;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+/* Top bar: left = fish count / haul   right = multiplier / depth */
+#hud-depth-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+#hud-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+#hud-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* Fish count: ×3 */
+#hud-caught {
+  font-size: clamp(22px, 5.8vw, 30px);
+  font-weight: 900;
+  color: var(--c-cyan);
+  text-shadow: var(--outline-lg);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* Live haul value during ascent */
+.hud-haul {
+  font-size: clamp(14px, 3.6vw, 18px);
+  font-weight: 900;
+  color: var(--c-yellow);
+  text-shadow: var(--outline);
+  letter-spacing: 0.03em;
+}
+.hud-haul.hidden { display: none; }
+
+/* Depth readout */
+#hud-depth {
+  font-size: clamp(26px, 6.5vw, 36px);
+  font-weight: 900;
+  color: var(--c-white);
+  text-shadow: var(--outline-lg);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+#hud-depth.hud-depth--pulse {
+  animation: depthPop 0.32s ease-out;
+}
+
+@keyframes depthPop {
+  0%   { transform: scale(1);    color: var(--c-white); }
+  40%  { transform: scale(1.12); color: var(--c-yellow); }
+  100% { transform: scale(1);    color: var(--c-white); }
+}
+
+/* Depth multiplier badge */
+.hud-mult {
+  font-size: clamp(13px, 3.4vw, 17px);
+  font-weight: 900;
+  color: var(--c-orange);
+  text-shadow: var(--outline);
+  letter-spacing: 0.06em;
+  background: rgba(255, 136, 0, 0.15);
+  padding: 1px 6px;
+  border: 1px solid rgba(255,136,0,0.5);
+}
+.hud-mult.hidden { display: none; }
+
+/* Phase label */
 #hud-phase {
-  font-size: 13px;
-  opacity: 0.9;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: var(--outline);
+  text-align: center;
 }
 
+/* Toss bonus accumulator */
 #hud-bonus {
-  font-size: 14px;
-  font-weight: 800;
-  color: #ffea7a;
+  font-size: clamp(15px, 4vw, 20px);
+  font-weight: 900;
+  color: var(--c-yellow);
+  text-shadow: var(--outline-lg);
+  letter-spacing: 0.04em;
+  text-align: center;
 }
+#hud-bonus.hidden { display: none; }
 
-#hud-bonus.hidden {
-  display: none;
+/* Toast: center screen, pops up big */
+.hud-toast {
+  font-size: clamp(16px, 4.5vw, 22px);
+  font-weight: 900;
+  color: var(--c-cyan);
+  text-shadow: var(--outline-lg);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.08s ease-out;
 }
+.hud-toast:not(.hidden) { opacity: 1; }
+.hud-toast.hidden        { display: none; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   OVERLAY BASE
+══════════════════════════════════════════════════════════════ */
 
 #overlay {
   position: absolute;
   inset: 0;
+  z-index: 30;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+#overlay.hidden { display: none; }
+
+.overlay-panel { position: absolute; inset: 0; }
+.overlay-panel.hidden { display: none !important; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   READY SCREEN
+══════════════════════════════════════════════════════════════ */
+
+.overlay-panel--ready {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 18px;
   padding: 24px;
-  background: rgba(6, 18, 40, 0.82);
-  color: #fff;
+  background: rgba(2, 12, 24, 0.88);
   text-align: center;
-  pointer-events: auto;
-  touch-action: manipulation;
-}
-
-#overlay.hidden {
-  display: none;
 }
 
 #overlay-title {
-  font-size: 26px;
-  font-weight: 800;
+  font-size: clamp(38px, 10vw, 56px);
+  font-weight: 900;
+  color: var(--c-cyan);
+  text-shadow: var(--outline-lg), 0 0 32px rgba(0, 216, 255, 0.4);
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  text-transform: uppercase;
 }
 
 #overlay-sub {
-  font-size: 16px;
-  opacity: 0.95;
-  max-width: 280px;
-  line-height: 1.35;
+  font-size: clamp(13px, 3.4vw, 17px);
+  font-weight: 900;
+  color: var(--c-white);
+  text-shadow: var(--outline);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.85;
 }
 
 #overlay-hint {
-  margin-top: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #7dffb0;
-  animation: pulse 1.2s ease-in-out infinite;
+  font-size: clamp(15px, 4vw, 19px);
+  font-weight: 900;
+  color: var(--c-green);
+  text-shadow: var(--outline), 0 0 18px rgba(0, 232, 122, 0.5);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: blink 1s step-start infinite;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.75;
-  }
-  50% {
-    opacity: 1;
-  }
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
 }
+
+
+/* ══════════════════════════════════════════════════════════════
+   RESULT SCREEN
+══════════════════════════════════════════════════════════════ */
+
+.overlay-panel--result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+}
+
+.result-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 8, 18, 0.92);
+}
+
+.result-card {
+  position: relative;
+  z-index: 1;
+  width: min(400px, 100%);
+  border: 2px solid var(--c-cyan);
+  background: var(--c-panel);
+  overflow: hidden;
+  /* subtle cyan glow around card */
+  box-shadow: 0 0 0 4px rgba(0,216,255,0.08), 0 16px 40px rgba(0,0,0,0.7);
+}
+
+/* Solid cyan header bar — arcade cabinet style */
+.result-header {
+  background: var(--c-cyan);
+  color: var(--c-bg);
+  font-size: clamp(11px, 2.8vw, 14px);
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-align: center;
+  padding: 8px 12px;
+  text-transform: uppercase;
+}
+
+.result-heading {
+  margin: 0;
+  padding: 14px 16px 10px;
+  font-size: clamp(28px, 7.5vw, 38px);
+  font-weight: 900;
+  color: var(--c-yellow);
+  text-shadow: var(--outline-lg), 0 0 20px rgba(255,224,0,0.25);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  border-bottom: 1px solid rgba(0,216,255,0.2);
+}
+
+/* Fish row grid */
+.result-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 4px;
+  gap: 8px;
+}
+
+.result-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  column-gap: 14px;
+  font-size: clamp(14px, 3.8vw, 17px);
+  font-weight: 900;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition:
+    opacity 0.14s ease-out,
+    transform 0.2s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.result-row--in {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.result-row__name {
+  color: var(--accent, var(--c-cyan));
+  text-shadow: var(--outline);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.result-row__qty {
+  color: var(--c-white);
+  text-shadow: var(--outline);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.result-row__amt {
+  color: var(--c-yellow);
+  text-shadow: var(--outline);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  min-width: 5ch;
+  text-align: right;
+}
+
+.result-empty {
+  margin: 12px 0 4px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--c-dim);
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: var(--outline);
+}
+.result-empty.hidden { display: none; }
+
+.result-divider {
+  height: 1px;
+  margin: 10px 0;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(0,216,255,0.4) 20%,
+    rgba(0,216,255,0.4) 80%,
+    transparent);
+}
+
+.result-meta {
+  padding: 0 16px;
+  font-size: clamp(11px, 2.8vw, 13px);
+  font-weight: 700;
+  color: var(--c-dim);
+  text-shadow: var(--outline);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.result-meta strong {
+  color: var(--c-white);
+  font-weight: 900;
+}
+
+.result-bonus-line {
+  padding: 4px 16px 0;
+  font-size: clamp(13px, 3.4vw, 15px);
+  font-weight: 900;
+  color: var(--c-orange);
+  text-shadow: var(--outline);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.result-bonus-line.hidden { display: none; }
+
+/* THE money counter — jackpot moment */
+.result-total {
+  margin: 14px 0 12px;
+  font-size: clamp(44px, 12vw, 60px);
+  font-weight: 900;
+  text-align: center;
+  color: var(--c-yellow);
+  text-shadow: var(--outline-lg), 0 0 28px rgba(255,224,0,0.3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.result-total--rolling {
+  animation: jackpotPulse 0.18s ease-in-out infinite alternate;
+}
+@keyframes jackpotPulse {
+  from { transform: scale(1);    text-shadow: var(--outline-lg), 0 0 28px rgba(255,224,0,0.3); }
+  to   { transform: scale(1.04); text-shadow: var(--outline-lg), 0 0 44px rgba(255,224,0,0.55); }
+}
+
+.result-total--pop {
+  animation: jackpotPop 0.38s cubic-bezier(0.15, 1.4, 0.4, 1);
+}
+@keyframes jackpotPop {
+  0%   { transform: scale(1); }
+  55%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* PLAY AGAIN button — classic arcade action button */
+.result-retry {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px 16px;
+  padding: 18px 20px;
+  border: 2px solid var(--c-green);
+  background: var(--c-green);
+  color: var(--c-bg);
+  font-family: inherit;
+  font-size: clamp(16px, 4.2vw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  /* Hard 4px bottom shadow = classic arcade button depth */
+  box-shadow: 0 4px 0 #006636, 0 6px 0 rgba(0,0,0,0.5);
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+.result-retry:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #006636, 0 2px 0 rgba(0,0,0,0.5);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   FLOATERS (catch / bonus pop-up text)
+══════════════════════════════════════════════════════════════ */
 
 #floaters {
   position: absolute;
@@ -118,11 +464,34 @@ body {
 
 .floater {
   position: absolute;
-  font-weight: 800;
-  font-size: 18px;
-  color: #ffea7a;
-  text-shadow: 0 2px 0 #0008;
-  animation: floatUp 0.9s ease-out forwards;
+  font-family: inherit;
+  font-weight: 900;
+  font-size: 20px;
+  color: var(--c-yellow);
+  text-shadow: var(--outline-lg);
+  letter-spacing: 0.05em;
+  animation: floatUp 0.85s ease-out forwards;
+}
+
+.floater--ding {
+  font-size: 15px;
+  color: var(--c-cyan);
+  text-shadow: var(--outline);
+  animation: floatUp 0.6s ease-out forwards;
+}
+
+.floater--bonus {
+  font-size: 24px;
+  color: var(--c-yellow);
+  text-shadow: var(--outline-lg), 0 0 18px rgba(255,224,0,0.5);
+  animation: floatUp 0.72s ease-out forwards;
+}
+
+.floater--bonusHot {
+  font-size: 30px;
+  color: var(--c-orange);
+  text-shadow: var(--outline-lg), 0 0 22px rgba(255,136,0,0.6);
+  animation: floatUp 0.75s ease-out forwards;
 }
 
 @keyframes floatUp {
@@ -132,6 +501,6 @@ body {
   }
   to {
     opacity: 0;
-    transform: translate(-50%, -120%) scale(1.15);
+    transform: translate(-50%, -160%) scale(1.2);
   }
 }

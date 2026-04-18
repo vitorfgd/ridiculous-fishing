@@ -1,6 +1,22 @@
 import type { FishInstance } from "./fish";
 
 /** Circle (hook) vs axis-aligned rectangle (fish). */
+/** Squared distance from point to closest point on AABB. */
+export function pointToAabbDistSq(
+  cx: number,
+  cy: number,
+  fx: number,
+  fy: number,
+  halfW: number,
+  halfH: number,
+): number {
+  const nx = Math.max(fx - halfW, Math.min(cx, fx + halfW));
+  const ny = Math.max(fy - halfH, Math.min(cy, fy + halfH));
+  const dx = cx - nx;
+  const dy = cy - ny;
+  return dx * dx + dy * dy;
+}
+
 export function circleHitsAabb(
   cx: number,
   cy: number,
@@ -10,11 +26,7 @@ export function circleHitsAabb(
   halfW: number,
   halfH: number,
 ): boolean {
-  const nx = Math.max(fx - halfW, Math.min(cx, fx + halfW));
-  const ny = Math.max(fy - halfH, Math.min(cy, fy + halfH));
-  const dx = cx - nx;
-  const dy = cy - ny;
-  return dx * dx + dy * dy < radius * radius;
+  return pointToAabbDistSq(cx, cy, fx, fy, halfW, halfH) < radius * radius;
 }
 
 export function findFirstFishHit(
